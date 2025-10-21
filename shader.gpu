@@ -1,24 +1,55 @@
-
-
 // Vertex shader
 const vertexShaderSource = `
 attribute vec3 vertex;
+attribute vec3 normal;
+
 uniform mat4 ModelViewProjectionMatrix;
+uniform mat4 ModelViewMatrix;
+uniform mat3 NormalMatrix;
+
+varying vec3 v_position_view;
+varying vec3 v_normal_view;
 
 void main() {
-    gl_Position = ModelViewProjectionMatrix * vec4(vertex,1.0);
-}`;
-
+    gl_Position = ModelViewProjectionMatrix * vec4(vertex, 1.0);
+    v_position_view = (ModelViewMatrix * vec4(vertex, 1.0)).xyz;
+    v_normal_view = normalize(NormalMatrix * normal);
+}
+`;
 
 // Fragment shader
 const fragmentShaderSource = `
 #ifdef GL_FRAGMENT_PRECISION_HIGH
-   precision highp float;
+    precision highp float;
 #else
-   precision mediump float;
+    precision mediump float;
 #endif
 
-uniform vec4 color;
+varying vec3 v_position_view;
+varying vec3 v_normal_view;
+
+uniform vec3 u_lightPosition_view;
+uniform vec3 u_viewPosition_view;
+uniform vec4 u_ambientColor;
+uniform vec4 u_diffuseColor;
+uniform vec4 u_specularColor;
+uniform float u_shininess;
+
 void main() {
-    gl_FragColor = color;
-}`;
+    vec3 N = normalize(v_normal_view);
+    vec3 L = normalize(u_lightPosition_view - v_position_view);
+    vec3 V = normalize(u_viewPosition_view - v_position_view);
+    vec3 R = reflect(-L, N);
+
+    vec4 ambient = u_ambientColor;
+    float diffIntensity = max(dot(N, L), 0.0);
+    vec4 diffuse = u_diffuseColor * diffIntensity;
+    float specIntensity = pow(max(dot(R, V), 0.0), u_shininess);
+    vec4 specular = u_specularColor * specIntensity;
+    if (diffIntensity <= 0.0) {
+        specular = vec4(0.0, 0.0, 0.0, 1.0);
+    }
+    gl_FragColor = ambient + diffuse + specular;
+    gl_FragColor.a = u_diffuseColor.a;
+}
+`;
