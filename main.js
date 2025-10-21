@@ -86,16 +86,26 @@ function draw() {
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
+    // Ensure viewport matches canvas size
+    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+    // Use canvas aspect ratio
+    let aspect = gl.canvas.width / gl.canvas.height;
     /* Set the values of the projection transformation */
-    let projection = m4.perspective(Math.PI / 8, 1, 8, 12);
-    /* Get the view matrix from the SimpleRotator object.*/
+    let projection = m4.perspective(Math.PI / 8, aspect, 8, 12);
+
+    // Get view (rotation) from trackball
     let modelViewFromBall = spaceball.getViewMatrix();
     let rotateToPointZero = m4.axisRotation([0.707, 0.707, 0], 0.7);
     let translateToPointZero = m4.translation(0, 0, -10);
 
+    // modelMatrix includes rotation from trackball and another rotation
     let modelMatrix = m4.multiply(rotateToPointZero, modelViewFromBall);
+    // ModelView = Translate * ModelMatrix
     let modelViewMatrix = m4.multiply(translateToPointZero, modelMatrix);
     let modelViewProjection = m4.multiply(projection, modelViewMatrix);
+
+    // Normal matrix for transforming normals
     let normalMatrix4 = m4.transpose(m4.inverse(modelViewMatrix));
     let normalMatrix = [
         normalMatrix4[0], normalMatrix4[1], normalMatrix4[2],
@@ -105,18 +115,21 @@ function draw() {
 
     shProgram.Use();
 
+    // Send matrices & material color
     gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection);
     gl.uniformMatrix4fv(shProgram.iModelViewMatrix, false, modelViewMatrix);
     gl.uniformMatrix3fv(shProgram.iNormalMatrix, false, normalMatrix);
     gl.uniform4fv(shProgram.iColor, [0.2, 0.7, 1.0, 1.0]);
 
+    // Animated light in world coords
     const time = performance.now() * 0.001;
-    const lightWorldPos = animateLight(time); // 1. Це позиція у СВІТІ
+    const lightWorldPos = animateLight(time);
 
-    const lightViewPos = m4.transformPoint(translateToPointZero, lightWorldPos);
+    const lightViewPos = m4.transformPoint(modelViewMatrix, lightWorldPos);
 
     gl.uniform3fv(shProgram.iLightPosition, lightViewPos);
 
+    // Bind buffers and draw
     gl.bindBuffer(gl.ARRAY_BUFFER, cassiniModel.vertexBuffer);
     gl.vertexAttribPointer(shProgram.iAttribVertex, 3, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(shProgram.iAttribVertex);
