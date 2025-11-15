@@ -11,9 +11,13 @@
 
         this.meshVertices = null;
         this.meshNormals = null;
+        this.meshTangents = null;
+        this.meshUVs = null;
         this.meshIndices = null;
         this.vertexBuffer = null;
         this.normalBuffer = null;
+        this.tangentBuffer = null;
+        this.uvBuffer = null;
         this.indexBuffer = null;
 
         this.createMeshData();
@@ -36,6 +40,7 @@
         const vMin = -Math.PI / 4, vMax = Math.PI / 4;
 
         let vertices = [];
+        let uvs = [];
 
         for (let j = 0; j <= vSegs; ++j) {
             let v = vMin + (vMax - vMin) * j / vSegs;
@@ -43,10 +48,10 @@
                 let u = uMin + (uMax - uMin) * i / uSegs;
                 let pt = this.cassini(u, v);
                 vertices.push(pt[0], pt[1], pt[2]);
+                uvs.push((u - uMin) / (uMax - uMin), (v - vMin) / (vMax - vMin));
             }
         }
 
-        // Генеруємо індекси для трикутників
         let indices = [];
         for (let j = 0; j < vSegs; ++j) {
             for (let i = 0; i < uSegs; ++i) {
@@ -59,10 +64,8 @@
             }
         }
 
-        // Розрахунок нормалей (Facet Area Weighted)
         let normals = new Array(vertices.length).fill(0);
 
-        // --- ЕТАП 1: Накопичення зважених нормалей ---
         for (let t = 0; t < indices.length; t += 3) {
             let i0 = indices[t] * 3, i1 = indices[t + 1] * 3, i2 = indices[t + 2] * 3;
 
@@ -73,12 +76,10 @@
             let a = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
             let b = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
 
-            // Векторний добуток (його довжина ВЖЕ зважена за площею)
             let nx = a[1] * b[2] - a[2] * b[1];
             let ny = a[2] * b[0] - a[0] * b[2];
             let nz = a[0] * b[1] - a[1] * b[0];
 
-            // Додаємо цей вектор до кожної з трьох вершин
             normals[i0] += nx;
             normals[i0 + 1] += ny;
             normals[i0 + 2] += nz;
@@ -100,14 +101,70 @@
             }
         }
 
+        let tangents = new Array(vertices.length).fill(0);
+
+        for (let t = 0; t < indices.length; t += 3) {
+            let i0 = indices[t] * 3, i1 = indices[t + 1] * 3, i2 = indices[t + 2] * 3;
+            let uv0 = indices[t] * 2, uv1 = indices[t + 1] * 2, uv2 = indices[t + 2] * 2;
+
+            let v0 = [vertices[i0], vertices[i0 + 1], vertices[i0 + 2]];
+            let v1 = [vertices[i1], vertices[i1 + 1], vertices[i1 + 2]];
+            let v2 = [vertices[i2], vertices[i2 + 1], vertices[i2 + 2]];
+
+            let uv0_coord = [uvs[uv0], uvs[uv0 + 1]];
+            let uv1_coord = [uvs[uv1], uvs[uv1 + 1]];
+            let uv2_coord = [uvs[uv2], uvs[uv2 + 1]];
+
+            let deltaPos1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+            let deltaPos2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+
+            // UV edge vectors
+            let deltaUV1 = [uv1_coord[0] - uv0_coord[0], uv1_coord[1] - uv0_coord[1]];
+            let deltaUV2 = [uv2_coord[0] - uv0_coord[0], uv2_coord[1] - uv0_coord[1]];
+
+            let det = deltaUV1[0] * deltaUV2[1] - deltaUV1[1] * deltaUV2[0];
+            if (Math.abs(det) < 0.0001) {
+                continue;
+            }
+            let r = 1.0 / det;
+            let tangent = [
+                (deltaPos1[0] * deltaUV2[1] - deltaPos2[0] * deltaUV1[1]) * r,
+                (deltaPos1[1] * deltaUV2[1] - deltaPos2[1] * deltaUV1[1]) * r,
+                (deltaPos1[2] * deltaUV2[1] - deltaPos2[2] * deltaUV1[1]) * r
+            ];
+
+            tangents[i0] += tangent[0];
+            tangents[i0 + 1] += tangent[1];
+            tangents[i0 + 2] += tangent[2];
+            tangents[i1] += tangent[0];
+            tangents[i1 + 1] += tangent[1];
+            tangents[i1 + 2] += tangent[2];
+            tangents[i2] += tangent[0];
+            tangents[i2 + 1] += tangent[1];
+            tangents[i2 + 2] += tangent[2];
+        }
+
+        for (let i = 0; i < tangents.length; i += 3) {
+            let tLen = Math.hypot(tangents[i], tangents[i + 1], tangents[i + 2]);
+            if (tLen > 0.00001) {
+                tangents[i] /= tLen;
+                tangents[i + 1] /= tLen;
+                tangents[i + 2] /= tLen;
+            }
+        }
+
         this.meshVertices = new Float32Array(vertices);
         this.meshNormals = new Float32Array(normals);
+        this.meshTangents = new Float32Array(tangents);
+        this.meshUVs = new Float32Array(uvs);
         this.meshIndices = new Uint16Array(indices);
     };
 
     Model.prototype.bufferMeshData = function (gl) {
         if (this.vertexBuffer) gl.deleteBuffer(this.vertexBuffer);
         if (this.normalBuffer) gl.deleteBuffer(this.normalBuffer);
+        if (this.tangentBuffer) gl.deleteBuffer(this.tangentBuffer);
+        if (this.uvBuffer) gl.deleteBuffer(this.uvBuffer);
         if (this.indexBuffer) gl.deleteBuffer(this.indexBuffer);
 
         this.vertexBuffer = gl.createBuffer();
@@ -117,6 +174,14 @@
         this.normalBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, this.normalBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, this.meshNormals, gl.STATIC_DRAW);
+
+        this.tangentBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.tangentBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, this.meshTangents, gl.STATIC_DRAW);
+
+        this.uvBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.uvBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, this.meshUVs, gl.STATIC_DRAW);
 
         this.indexBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
