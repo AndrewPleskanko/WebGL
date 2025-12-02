@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-    <title>PA#3 - Cassini Surface (Normal Mapping)</title>
+    <title>CGW - Texture Coordinate Scaling (Variant 11)</title>
     <style>
         body {
             background-color: #EEEEEE;
@@ -10,7 +10,7 @@
         }
 
         canvas {
-            background-color: black;
+            background-color: #CCCCCC;
         }
 
         .controls {
@@ -28,7 +28,7 @@
     <script src="./main.js"></script>
 </head>
 <body onload="init()">
-<h2>PA#3: Cassini Surface (Normal Mapping with Textures)</h2>
+<h2>CGW: Texture Coordinate Scaling (Variant 11)</h2>
 <p id="message">Drag your mouse on the surface to rotate it.</p>
 <div class="controls">
     <label>U Segments: <span id="u-val">40</span></label>
@@ -36,6 +36,17 @@
     <br>
     <label>V Segments: <span id="v-val">40</span></label>
     <input type="range" id="v-slider" min="3" max="100" value="40">
+    <hr style="border-color: #555; margin: 10px 0;">
+    <strong>Texture Scaling Controls:</strong><br>
+    <label>Pivot Point: <span id="pivot-display">U: 0.50, V: 0.50</span></label><br>
+    <label>Scale Factor: <span id="scale-display">1.00</span></label><br>
+    <br>
+    <small>
+        <b>W/S</b> - Move pivot along V axis<br>
+        <b>A/D</b> - Move pivot along U axis<br>
+        <b>Q/E</b> - Decrease/Increase scale<br>
+        <b>R</b> - Reset to defaults
+    </small>
 </div>
 <div id="canvas-holder">
     <canvas width="600" height="600" id="webglcanvas"></canvas>

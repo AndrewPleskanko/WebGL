@@ -6,6 +6,11 @@ let spaceball;                  // A SimpleRotator object that lets the user rot
 let cassiniModel;
 let uSlider, vSlider, uVal, vVal;
 let diffuseTexture, specularTexture, normalTexture;
+let pivotU = 0.5;  // Pivot point U coordinate (0-1)
+let pivotV = 0.5;  // Pivot point V coordinate (0-1)
+let textureScale = 1.0;  // Scale factor
+const pivotStep = 0.02;  // Step for moving pivot with WASD
+const scaleStep = 0.05;  // Step for changing scale
 
 function deg2rad(angle) {
     return angle * Math.PI / 180;
@@ -32,6 +37,8 @@ function ShaderProgram(name, program) {
     this.iDiffuseTexture = -1;
     this.iSpecularTexture = -1;
     this.iNormalTexture = -1;
+    this.iPivotPoint = -1;
+    this.iTextureScale = -1;
     this.Use = function () {
         gl.useProgram(this.prog);
     }
@@ -86,12 +93,15 @@ const fragmentShaderSource = `
     uniform sampler2D diffuseTexture;
     uniform sampler2D specularTexture;
     uniform sampler2D normalTexture;
+    uniform vec2 u_pivotPoint;   
+    uniform float u_textureScale; 
 
     void main(void) {
         // Sample textures
-        vec4 diffuseTex = texture2D(diffuseTexture, vUV);
-        vec4 specularTex = texture2D(specularTexture, vUV);
-        vec3 normalMap = texture2D(normalTexture, vUV).rgb;
+        vec2 scaledUV = u_pivotPoint + (vUV - u_pivotPoint) * u_textureScale;
+        vec4 diffuseTex = texture2D(diffuseTexture, scaledUV);
+        vec4 specularTex = texture2D(specularTexture, scaledUV);
+        vec3 normalMap = texture2D(normalTexture, scaledUV).rgb;
         
         // Transform normal from [0,1] to [-1,1]
         normalMap = normalize(normalMap * 2.0 - 1.0);
@@ -141,9 +151,9 @@ function loadTexture(url) {
         gl.bindTexture(gl.TEXTURE_2D, texture);
 
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
-        
+
         const image = new Image();
-        image.onload = function() {
+        image.onload = function () {
             gl.bindTexture(gl.TEXTURE_2D, texture);
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
 
@@ -154,7 +164,7 @@ function loadTexture(url) {
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
             }
-            
+
             resolve(texture);
         };
         image.onerror = reject;
@@ -171,7 +181,7 @@ function isPowerOf2(value) {
  * way to draw with WebGL.  Here, the geometry is so simple that it doesn't matter.)
  */
 function draw() {
-    gl.clearColor(0, 0, 0, 1);
+    gl.clearColor(0.1, 0.1, 0.1, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
@@ -199,7 +209,7 @@ function draw() {
     gl.uniformMatrix4fv(shProgram.iModelViewProjectionMatrix, false, modelViewProjection);
     gl.uniformMatrix4fv(shProgram.iModelViewMatrix, false, modelViewMatrix);
     gl.uniformMatrix3fv(shProgram.iNormalMatrix, false, normalMatrix);
-    gl.uniform4fv(shProgram.iAmbientColor, [0.1, 0.1, 0.1, 1.0]);
+    gl.uniform4fv(shProgram.iAmbientColor, [0.25, 0.25, 0.25, 1.0]);
     gl.uniform1f(shProgram.iShininess, 32.0);
 
     // Animated light in world coords
@@ -211,6 +221,9 @@ function draw() {
     gl.uniform3fv(shProgram.iLightPosition, lightViewPos);
 
     gl.uniform3fv(shProgram.iViewPosition, [0, 0, 0]);
+
+    gl.uniform2fv(shProgram.iPivotPoint, [pivotU, pivotV]);
+    gl.uniform1f(shProgram.iTextureScale, textureScale);
 
     if (diffuseTexture && specularTexture && normalTexture) {
         gl.activeTexture(gl.TEXTURE0);
@@ -270,6 +283,8 @@ function initGL() {
     shProgram.iDiffuseTexture = gl.getUniformLocation(prog, "diffuseTexture");
     shProgram.iSpecularTexture = gl.getUniformLocation(prog, "specularTexture");
     shProgram.iNormalTexture = gl.getUniformLocation(prog, "normalTexture");
+    shProgram.iPivotPoint = gl.getUniformLocation(prog, "u_pivotPoint");
+    shProgram.iTextureScale = gl.getUniformLocation(prog, "u_textureScale");
 
     gl.enable(gl.DEPTH_TEST);
     gl.enable(gl.CULL_FACE);
@@ -336,6 +351,57 @@ function createProgram(gl, vShader, fShader) {
 }
 
 
+function updateScalingUI() {
+    const pivotDisplay = document.getElementById('pivot-display');
+    const scaleDisplay = document.getElementById('scale-display');
+    if (pivotDisplay) pivotDisplay.textContent = `U: ${pivotU.toFixed(2)}, V: ${pivotV.toFixed(2)}`;
+    if (scaleDisplay) scaleDisplay.textContent = textureScale.toFixed(2);
+}
+
+function setupKeyboardControls() {
+    document.addEventListener('keydown', function (event) {
+        let needsUpdate = false;
+
+        switch (event.key.toLowerCase()) {
+            case 'a':
+                pivotU = Math.max(0, pivotU - pivotStep);
+                needsUpdate = true;
+                break;
+            case 'd':
+                pivotU = Math.min(1, pivotU + pivotStep);
+                needsUpdate = true;
+                break;
+            case 'w':
+                pivotV = Math.min(1, pivotV + pivotStep);
+                needsUpdate = true;
+                break;
+            case 's':
+                pivotV = Math.max(0, pivotV - pivotStep);
+                needsUpdate = true;
+                break;
+            case 'q':
+                textureScale = Math.max(0.1, textureScale - scaleStep);
+                needsUpdate = true;
+                break;
+            case 'e':
+                textureScale = Math.min(5.0, textureScale + scaleStep);
+                needsUpdate = true;
+                break;
+            case 'r':
+                pivotU = 0.5;
+                pivotV = 0.5;
+                textureScale = 1.0;
+                needsUpdate = true;
+                break;
+        }
+
+        if (needsUpdate) {
+            updateScalingUI();
+            event.preventDefault();
+        }
+    });
+}
+
 /**
  * initialization function that will be called when the page has loaded
  */
@@ -359,6 +425,9 @@ function init() {
     }
 
     spaceball = new TrackballRotator(canvas, draw, 0);
+
+    setupKeyboardControls();
+    updateScalingUI();
 
     animate();
 }
